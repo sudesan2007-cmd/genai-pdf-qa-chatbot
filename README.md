@@ -1,156 +1,142 @@
-# Development of a PDF-Based Question-Answering Chatbot Using LangChain
+## Development of a PDF-Based Question-Answering Chatbot Using LangChain
+## NAME:SUDESAN T
+## REG NO:212225240161
 
-## AIM:
+
+
+### AIM:
 To design and implement a question-answering chatbot capable of processing and extracting information from a provided PDF document using LangChain, and to evaluate its effectiveness by testing its responses to diverse queries derived from the document's content.
 
-## PROBLEM STATEMENT:
-Searching through large PDFs manually is slow and inefficient. Traditional keyword searching fails to understand the actual meaning of questions. This project solves this by creating a chatbot pipeline that reads a PDF, saves its meaning in a database, and uses an AI model to answer user questions instantly and accurately.
+### PROBLEM STATEMENT:
+In many cases, users need specific information from large documents without manually searching through them. A question-answering chatbot can address this problem by:
 
-## DESIGN STEPS:
+    Parsing and indexing the content of a PDF document.
+    Allowing users to ask questions in natural language.
+    Providing concise and accurate answers based on the content of the document.
 
-### STEP 1:
-**Load and Split PDF Documents:** Use `PyPDFLoader` to read all the text pages from the PDF file. Then, use `RecursiveCharacterTextSplitter` to cut the long text into small, clean chunks so the AI model can read it easily.
+The implementation will evaluate the chatbot’s ability to handle diverse queries and deliver accurate responses.
 
-### STEP 2:
-**Create Vector Embeddings and Database:** Pass the text chunks into `OpenAIEmbeddings` to convert the words into math vectors. Save these vectors into a `Chroma` database so the chatbot can perform fast semantic searches.
+### DESIGN STEPS
 
-### STEP 3:
-**Setup RetrievalQA Chain:** Initialize the large language model (`ChatOpenAI`) and link it to the vector database using LangChain's `RetrievalQA` module. When a user asks a question, the system pulls the correct matching text and uses the LLM to generate a natural answer.
+#### STEP 1: 
+Load and Parse PDF
+Use LangChain's DocumentLoader to extract text from a PDF document.
+
+#### STEP 2: 
+Create a Vector Store
+Convert the text into vector embeddings using a language model, enabling semantic search.
+
+#### STEP 3: 
+Initialize the LangChain QA Pipeline
+Use LangChain's RetrievalQA to connect the vector store with a language model for answering questions.
+
+#### STEP 4: 
+Handle User Queries
+Process user queries, retrieve relevant document sections, and generate responses.
+
+#### STEP 5: 
+Evaluate Effectiveness
+Test the chatbot with a variety of queries to assess accuracy and reliability.
+
 
 ### PROGRAM:
-
 ```
-%pip install -q langchain langchain-community langchain-openai langchain-chroma langchain-text-splitters pypdf python-dotenv
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
 
+pdf = canvas.Canvas("summary of the project.pdf", pagesize=A4)
 
-import os
-from dotenv import load_dotenv
+text = pdf.beginText(50, 800)
+text.setFont("Helvetica", 12)
 
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_chroma import Chroma
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-
-
-load_dotenv()
+content = [
+    "PROJECT: LIBRARY MANAGEMENT SYSTEM",
+    "",
+    "OBJECTIVE:",
+    "The main objective is to develop a Library Management System",
+    "that simplifies book management and library operations.",
+    "",
+    "COMPONENTS USED:",
+    "1. User Registration",
+    "2. Book Management",
+    "3. Book Search",
+    "4. Book Issue and Return",
+    "5. Database Management",
+    "",
+    "WORKING:",
+    "Users can register and log in to the system.",
+    "They can search for books using book names or authors.",
+    "The librarian can add, update and delete book information.",
+    "Students can borrow and return books.",
 
 api_key = os.getenv("OPENAI_API_KEY")
 
 if not api_key:
-    raise ValueError("OpenAI API key not found! Check your .env file.")
+    raise ValueError("OpenAI API key not found. Check your .env file.")
 
-print("API key loaded successfully!")
+loader = PyPDFLoader("summary of the project.pdf")
+pages = loader.load()
 
-
-pdf_path = "document.pdf"
-
-if not os.path.exists(pdf_path):
-    raise FileNotFoundError("Please place document.pdf in the notebook folder.")
-
-loader = PyPDFLoader(pdf_path)
-documents = loader.load()
-
-print("PDF loaded successfully!")
-print("Total pages:", len(documents))
-
+print("PDF loaded successfully")
+print("Total pages:", len(pages))
 
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=1000,
     chunk_overlap=200
 )
 
-chunks = text_splitter.split_documents(documents)
+chunks = text_splitter.split_documents(pages)
 
-print("PDF split successfully!")
 print("Total chunks:", len(chunks))
 
-
-embeddings = OpenAIEmbeddings(
+embedding = OpenAIEmbeddings(
     model="text-embedding-3-small"
 )
 
-
-vectorstore = Chroma.from_documents(
+vectordb = Chroma.from_documents(
     documents=chunks,
-    embedding=embeddings,
-    persist_directory="./chroma_db"
+    embedding=embedding,
+    persist_directory="docs/chroma",
+    collection_name="project_pdf"
 )
 
-print("Embeddings created successfully!")
-print("Documents stored in ChromaDB!")
-
-
-retriever = vectorstore.as_retriever(
-    search_kwargs={"k": 3}
-)
-
-print("Retriever created successfully!")
-
+print("Vector database created successfully")
 
 llm = ChatOpenAI(
-    model="gpt-4o-mini",
+    model_name="gpt-4o-mini",
     temperature=0
 )
 
-print("AI model connected successfully!")
-
-
-prompt = ChatPromptTemplate.from_messages([
-    ("system", """
-    Answer the question using only the following context.
-
-    If the answer is not available in the context,
-    say "The answer is not available in the PDF."
-
-    Context:
-    {context}
-    """),
-    ("human", "{question}")
-])
-
-def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
-
-qa_chain = (
-    {
-        "context": retriever | format_docs,
-        "question": lambda question: question
-    }
-    | prompt
-    | llm
-    | StrOutputParser()
+memory = ConversationBufferMemory(
+    memory_key="chat_history",
+    return_messages=True,
+    output_key="answer"
 )
 
-print("PDF Question-Answering Chatbot is ready!")
+qa = ConversationalRetrievalChain.from_llm(
+    llm=llm,
+    retriever=vectordb.as_retriever(search_kwargs={"k": 3}),
+    memory=memory,
+    return_source_documents=True
+)
+
+print("\nPDF Question Answering Chatbot is ready!")
 
 while True:
+    question = input("\nAsk a question (type exit to stop): ")
 
-    question = input("\nAsk a question about your PDF (type exit to stop): ")
-
-    if question.lower().strip() == "exit":
-        print("Chatbot closed!")
+    if question.lower() == "exit":
+        print("Chatbot stopped.")
         break
 
-    if not question.strip():
-        print("Please enter a valid question.")
-        continue
+    result = qa.invoke({"question": question})
 
-    answer = qa_chain.invoke(question)
-
-    print("\nChatbot Answer:")
-    print(answer)
-
-    print("-" * 50)
-
- ```
-
+    print("\nAnswer:", result["answer"])
+```
 
 ### OUTPUT:
-<img width="1338" height="530" alt="Screenshot 2026-11-04 091802" src="https://github.com/user-attachments/assets/97f0be1a-848c-4c41-8c55-9355ee15617c" />
+<img width="1298" height="830" alt="image" src="https://github.com/user-attachments/assets/673f8d79-0f34-4a3e-8357-58c4ce7a14e6" />
 
+### RESULT:
+Thus, a question-answering chatbot capable of processing and extracting information from a provided PDF document using LangChain was implemented and evaluated for its effectiveness by testing its responses to diverse queries derived from the document's content successfully.
 
-
-## RESULT:
-The PDF-based question-answering chatbot was designed and implemented successfully using LangChain. The program accurately extracted text from the document, generated vector indices, and answered content-specific user queries correctly without any errors.
